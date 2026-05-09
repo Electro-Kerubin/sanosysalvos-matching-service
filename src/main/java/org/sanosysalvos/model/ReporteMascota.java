@@ -27,6 +27,9 @@ public class ReporteMascota {
     @Column(name = "tamano")
     private String tamano;
 
+    @Column(name = "id_tipo_reporte")
+    private Integer idTipoReporte;
+
     @Column(name = "latitud")
     private Double latitud;
 
