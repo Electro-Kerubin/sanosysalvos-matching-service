@@ -135,16 +135,16 @@ public class ReporteMascotaConsumer {
 
                 circuitBreakerService.executeProtected(() -> {
                     var solicitud = matchingService.solicitarCoincidencia(idPerdido, idEncontrado);
-                    var resultado = matchingService.procesarCoincidencia(solicitud.getIdCoincidenciaRequest());
+                    var resultado = matchingService.procesarCoincidencia(solicitud.idCoincidenciaRequest());
 
                     log.info("[Matching] perdido={} vs encontrado={}: veredicto={}",
-                            idPerdido, idEncontrado, resultado.getVeredictoFinal());
+                            idPerdido, idEncontrado, resultado.veredictoFinal());
 
                     // ── Paso 4: Publicar coincidencia alta a RabbitMQ ─────────
-                    if ("COINCIDENCIA_ALTA".equals(resultado.getVeredictoFinal())) {
-                        matchingService.coincidenciaPotencialEncontrada(solicitud.getIdCoincidenciaRequest());
+                    if ("COINCIDENCIA_ALTA".equals(resultado.veredictoFinal())) {
+                        matchingService.coincidenciaPotencialEncontrada(solicitud.idCoincidenciaRequest());
                         log.info("[Matching] Coincidencia alta publicada para request id={}.",
-                                solicitud.getIdCoincidenciaRequest());
+                                solicitud.idCoincidenciaRequest());
                     }
                 });
 
