@@ -51,6 +51,7 @@ jobs:
           proxy_host: ${{ secrets.EC2_FRONT_HOST }}
           proxy_username: ${{ secrets.EC2_USER }}
           proxy_key: ${{ secrets.EC2_PEM_KEY }}
+          debug: true
           envs: DOCKERHUB_USERNAME,DB_USER,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD,JWT_SECRET
           script: |
             export PATH=$PATH:/usr/bin:/usr/local/bin
