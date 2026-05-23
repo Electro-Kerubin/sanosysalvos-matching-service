@@ -76,6 +76,14 @@ jobs:
             sudo chown ec2-user:ec2-user /opt/sanosysalvos/infra
             cd /opt/sanosysalvos/infra
 
+            # --- init-db.sql (siempre se sobreescribe) ---
+            cat > init-db.sql <<'DBINIT_EOF'
+            SELECT 'CREATE DATABASE auth_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'auth_db')\gexec
+            SELECT 'CREATE DATABASE geolocation_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'geolocation_db')\gexec
+            SELECT 'CREATE DATABASE sanosysalvos_reports' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sanosysalvos_reports')\gexec
+            SELECT 'CREATE DATABASE matching_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'matching_db')\gexec
+            DBINIT_EOF
+
             # --- .env (se sobreescribe en cada deploy para mantener valores actualizados) ---
             cat > .env <<EOF
             DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
@@ -86,27 +94,36 @@ jobs:
             JWT_SECRET=${JWT_SECRET}
             EOF
 
-            # --- docker-compose.yml ---
+            # --- docker-compose.yml (siempre se sobreescribe) ---
             cat > docker-compose.yml <<'COMPOSE_EOF'
             version: '3.8'
             services:
+
+              eureka-server:
+                image: springcloud/eureka
+                container_name: sanosysalvos-eureka
+                restart: unless-stopped
+                ports:
+                  - "8761:8761"
+
               postgres:
                 image: postgres:16-alpine
                 container_name: sanosysalvos-postgres
                 restart: unless-stopped
                 environment:
-                  POSTGRES_DB: sanosysalvos
                   POSTGRES_USER: ${DB_USER}
                   POSTGRES_PASSWORD: ${DB_PASSWORD}
                 ports:
                   - "5432:5432"
                 volumes:
                   - postgres_data:/var/lib/postgresql/data
+                  - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
                 healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d sanosysalvos"]
+                  test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
                   interval: 10s
                   timeout: 5s
                   retries: 5
+
               rabbitmq:
                 image: rabbitmq:3.13-management-alpine
                 container_name: sanosysalvos-rabbitmq
@@ -124,6 +141,7 @@ jobs:
                   interval: 10s
                   timeout: 5s
                   retries: 5
+
               auth-service:
                 image: ${DOCKERHUB_USERNAME}/sanosysalvos-auth-service:latest
                 container_name: sanosysalvos-auth-service
@@ -131,13 +149,17 @@ jobs:
                 ports:
                   - "8081:8081"
                 environment:
-                  DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
+                  DB_URL: jdbc:postgresql://postgres:5432/auth_db
                   DB_USER: ${DB_USER}
                   DB_PASSWORD: ${DB_PASSWORD}
                   JWT_SECRET: ${JWT_SECRET}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
                 depends_on:
                   postgres:
                     condition: service_healthy
+                  eureka-server:
+                    condition: service_started
+
               report-service:
                 image: ${DOCKERHUB_USERNAME}/sanosysalvos-reporte-service:latest
                 container_name: sanosysalvos-report-service
@@ -145,7 +167,7 @@ jobs:
                 ports:
                   - "8083:8083"
                 environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sanosysalvos
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sanosysalvos_reports
                   SPRING_DATASOURCE_USERNAME: ${DB_USER}
                   SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
                   SPRING_JPA_HIBERNATE_DDL_AUTO: update
@@ -153,11 +175,15 @@ jobs:
                   RABBITMQ_PORT: 5672
                   RABBITMQ_USERNAME: ${RABBITMQ_USER}
                   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
                 depends_on:
                   postgres:
                     condition: service_healthy
                   rabbitmq:
                     condition: service_healthy
+                  eureka-server:
+                    condition: service_started
+
               geolocation-service:
                 image: ${DOCKERHUB_USERNAME}/sanosysalvos-geolocation-service:latest
                 container_name: sanosysalvos-geolocation-service
@@ -165,12 +191,16 @@ jobs:
                 ports:
                   - "8084:8084"
                 environment:
-                  GEO_DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
+                  GEO_DB_URL: jdbc:postgresql://postgres:5432/geolocation_db
                   GEO_DB_USER: ${DB_USER}
                   GEO_DB_PASSWORD: ${DB_PASSWORD}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
                 depends_on:
                   postgres:
                     condition: service_healthy
+                  eureka-server:
+                    condition: service_started
+
               matching-service:
                 image: ${DOCKERHUB_USERNAME}/sanosysalvos-matching-service:latest
                 container_name: sanosysalvos-matching-service
@@ -178,7 +208,7 @@ jobs:
                 ports:
                   - "8085:8085"
                 environment:
-                  MATCHING_DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
+                  MATCHING_DB_URL: jdbc:postgresql://postgres:5432/matching_db
                   MATCHING_DB_USER: ${DB_USER}
                   MATCHING_DB_PASSWORD: ${DB_PASSWORD}
                   RABBITMQ_HOST: rabbitmq
@@ -187,6 +217,7 @@ jobs:
                   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
                   GEOLOCATION_SERVICE_URL: http://geolocation-service:8084
                   JWT_SECRET: ${JWT_SECRET}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
                 depends_on:
                   postgres:
                     condition: service_healthy
@@ -194,6 +225,9 @@ jobs:
                     condition: service_healthy
                   geolocation-service:
                     condition: service_started
+                  eureka-server:
+                    condition: service_started
+
               api-gateway:
                 image: ${DOCKERHUB_USERNAME}/sanosysalvos-api-gateway:latest
                 container_name: sanosysalvos-api-gateway
@@ -202,18 +236,16 @@ jobs:
                   - "8080:8080"
                 environment:
                   JWT_SECRET: ${JWT_SECRET}
-                  AUTH_SERVICE_URL: http://auth-service:8081
-                  REPORTE_SERVICE_URL: http://report-service:8083
-                  GEO_SERVICE_URL: http://geolocation-service:8084
-                  MATCH_SERVICE_URL: http://matching-service:8085
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
+                  CORS_ALLOWED_ORIGIN_EC2: ${CORS_ALLOWED_ORIGIN_EC2}
                 depends_on:
-                  - auth-service
-                  - report-service
-                  - geolocation-service
-                  - matching-service
+                  eureka-server:
+                    condition: service_started
+
             volumes:
               postgres_data:
               rabbitmq_data:
+
             networks:
               default:
                 name: sanosysalvos-network
@@ -221,5 +253,5 @@ jobs:
 
             # --- Deploy ---
             sudo docker compose pull matching-service
-            sudo docker compose up -d --no-deps --no-wait matching-service
+            sudo docker compose up -d --no-deps matching-service
             sudo docker image prune -f
