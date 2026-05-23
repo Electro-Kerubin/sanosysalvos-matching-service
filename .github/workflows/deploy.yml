@@ -44,6 +44,7 @@ jobs:
           RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
           RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          CORS_ALLOWED_ORIGIN_EC2: "http://${{ secrets.EC2_FRONT_HOST }}:3000"
         with:
           host: ${{ secrets.EC2_BACK_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -53,7 +54,7 @@ jobs:
           proxy_key: ${{ secrets.EC2_PEM_KEY }}
           debug: true
           command_timeout: 20m
-          envs: DOCKERHUB_USERNAME,DB_USER,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD,JWT_SECRET
+          envs: DOCKERHUB_USERNAME,DB_USER,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD,JWT_SECRET,CORS_ALLOWED_ORIGIN_EC2
           script: |
             export PATH=$PATH:/usr/bin:/usr/local/bin
 
@@ -92,6 +93,7 @@ jobs:
             RABBITMQ_USER=${RABBITMQ_USER}
             RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
             JWT_SECRET=${JWT_SECRET}
+            CORS_ALLOWED_ORIGIN_EC2=${CORS_ALLOWED_ORIGIN_EC2}
             EOF
 
             # --- docker-compose.yml (siempre se sobreescribe) ---
