@@ -6,10 +6,15 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.sanosysalvos.client.GeolocationClient;
+import org.sanosysalvos.client.ReportesClient;
 import org.sanosysalvos.dto.CoincidenciaResultadoResponseDto;
 import org.sanosysalvos.dto.CoincidenciaSolicitudResponseDto;
+import org.sanosysalvos.dto.CoordenadaResponseDto;
+import org.sanosysalvos.dto.MascotaDto;
 import org.sanosysalvos.dto.NotificacionResultadoDto;
 import org.sanosysalvos.dto.ReglaCoincidenciaResponseDto;
+import org.sanosysalvos.dto.ReporteDto;
 import org.sanosysalvos.exception.BusinessException;
 import org.sanosysalvos.exception.NotFoundException;
 import org.sanosysalvos.model.CoincidenciaRequest;
@@ -22,11 +27,15 @@ import org.sanosysalvos.repository.CoincidenciaResultRepository;
 import org.sanosysalvos.repository.CoincidenciaStatusRepository;
 import org.sanosysalvos.repository.ReglaCoincidenciaRepository;
 import org.sanosysalvos.repository.ReporteMascotaRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MatchingService {
+
+    private static final Logger log = LoggerFactory.getLogger(MatchingService.class);
 
     private static final String ESTADO_PENDIENTE = "PENDIENTE";
     private static final String ESTADO_PROCESADO = "PROCESADO";
@@ -39,6 +48,8 @@ public class MatchingService {
     private final ScoringService scoringService;
     private final CircuitBreakerService circuitBreakerService;
     private final CoincidenciaNotifier coincidenciaNotifier;
+    private final ReportesClient reportesClient;
+    private final GeolocationClient geolocationClient;
 
     public MatchingService(
             CoincidenciaRequestRepository coincidenciaRequestRepository,
@@ -48,7 +59,9 @@ public class MatchingService {
             ReporteMascotaRepository reporteMascotaRepository,
             ScoringService scoringService,
             CircuitBreakerService circuitBreakerService,
-            CoincidenciaNotifier coincidenciaNotifier
+            CoincidenciaNotifier coincidenciaNotifier,
+            ReportesClient reportesClient,
+            GeolocationClient geolocationClient
     ) {
         this.coincidenciaRequestRepository = coincidenciaRequestRepository;
         this.coincidenciaResultRepository = coincidenciaResultRepository;
@@ -58,15 +71,14 @@ public class MatchingService {
         this.scoringService = scoringService;
         this.circuitBreakerService = circuitBreakerService;
         this.coincidenciaNotifier = coincidenciaNotifier;
+        this.reportesClient = reportesClient;
+        this.geolocationClient = geolocationClient;
     }
 
     @Transactional
     public CoincidenciaSolicitudResponseDto solicitarCoincidencia(Long idPerdidoReporte, Long idEncontradoReporte) {
-        ReporteMascota reportePerdido = reporteMascotaRepository.findById(idPerdidoReporte)
-                .orElseThrow(() -> new NotFoundException("No existe reporte perdido con id " + idPerdidoReporte));
-
-        ReporteMascota reporteEncontrado = reporteMascotaRepository.findById(idEncontradoReporte)
-                .orElseThrow(() -> new NotFoundException("No existe reporte encontrado con id " + idEncontradoReporte));
+        ReporteMascota reportePerdido = fetchOrSeed(idPerdidoReporte);
+        ReporteMascota reporteEncontrado = fetchOrSeed(idEncontradoReporte);
 
         CoincidenciaRequest request = new CoincidenciaRequest();
         request.setReportePerdido(reportePerdido);
@@ -194,6 +206,53 @@ public class MatchingService {
         );
 
         return new NotificacionResultadoDto(idCoincidenciaRequest, state, "Notificacion enviada correctamente");
+    }
+
+    private ReporteMascota fetchOrSeed(Long idReporte) {
+        return reporteMascotaRepository.findById(idReporte).orElseGet(() -> {
+            log.info("[MatchingService] Reporte id={} no encontrado localmente, sincronizando desde reportes-service.", idReporte);
+            ReporteMascota reporte = new ReporteMascota();
+            reporte.setIdReporteMascota(idReporte);
+
+            try {
+                ReporteDto dto = reportesClient.getReporte(idReporte);
+                if (dto != null) {
+                    reporte.setIdTipoReporte(dto.getIdTipoReporte());
+                    reporte.setFechaReporte(dto.getFechaReporte());
+
+                    if (dto.getIdMascota() != null) {
+                        try {
+                            MascotaDto mascota = reportesClient.getMascota(dto.getIdMascota().longValue());
+                            if (mascota != null) {
+                                reporte.setRaza(mascota.getDescripcionRaza());
+                                String color = mascota.getColorPrimario();
+                                if (color != null && mascota.getColorSecundario() != null && !mascota.getColorSecundario().isBlank()) {
+                                    color = color + " / " + mascota.getColorSecundario();
+                                }
+                                reporte.setColor(color);
+                                reporte.setTamano(mascota.getTamano());
+                            }
+                        } catch (Exception ex) {
+                            log.warn("[MatchingService] No se pudo obtener mascota id={}: {}", dto.getIdMascota(), ex.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[MatchingService] No se pudo obtener reporte id={} desde reportes-service: {}", idReporte, ex.getMessage());
+            }
+
+            try {
+                CoordenadaResponseDto coord = geolocationClient.getCoordenadaByReporte(idReporte);
+                if (coord != null) {
+                    reporte.setLatitud(coord.getUbicacionLat());
+                    reporte.setLongitud(coord.getUbicacionLon());
+                }
+            } catch (Exception ex) {
+                log.warn("[MatchingService] No se pudieron obtener coordenadas para reporte id={}: {}", idReporte, ex.getMessage());
+            }
+
+            return reporteMascotaRepository.save(reporte);
+        });
     }
 
     private CoincidenciaStatus getStatus(String descripcion) {

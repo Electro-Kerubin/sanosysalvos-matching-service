@@ -218,6 +218,7 @@ jobs:
                   RABBITMQ_USERNAME: ${RABBITMQ_USER}
                   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
                   GEOLOCATION_SERVICE_URL: http://geolocation-service:8084
+                  REPORTES_SERVICE_URL: http://report-service:8083
                   JWT_SECRET: ${JWT_SECRET}
                   EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka
                 depends_on:
