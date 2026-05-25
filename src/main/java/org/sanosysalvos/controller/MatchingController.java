@@ -9,6 +9,7 @@ import org.sanosysalvos.dto.CoincidenciaSolicitudResponseDto;
 import org.sanosysalvos.dto.CrearCoincidenciaRequestDto;
 import org.sanosysalvos.dto.NotificacionResultadoDto;
 import org.sanosysalvos.dto.ReglaCoincidenciaResponseDto;
+import org.sanosysalvos.service.MatchingScheduledJob;
 import org.sanosysalvos.service.MatchingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,9 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MatchingController {
 
     private final MatchingService matchingService;
+    private final MatchingScheduledJob matchingScheduledJob;
 
-    public MatchingController(MatchingService matchingService) {
+    public MatchingController(MatchingService matchingService, MatchingScheduledJob matchingScheduledJob) {
         this.matchingService = matchingService;
+        this.matchingScheduledJob = matchingScheduledJob;
     }
 
     @PostMapping("/solicitudes")
@@ -80,6 +83,12 @@ public class MatchingController {
             @PathVariable Long idCoincidenciaRequest
     ) {
         return ResponseEntity.ok(matchingService.coincidenciaPotencialEncontrada(idCoincidenciaRequest));
+    }
+
+    @PostMapping("/sync/{idReporte}")
+    public ResponseEntity<Void> sincronizarReporte(@PathVariable Long idReporte) {
+        matchingScheduledJob.sincronizarReporteIndividual(idReporte);
+        return ResponseEntity.accepted().build();
     }
 }
 

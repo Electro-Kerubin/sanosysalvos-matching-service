@@ -32,6 +32,43 @@ public class MatchingScheduledJob {
         this.coincidenciaRequestRepository = coincidenciaRequestRepository;
     }
 
+    public void sincronizarReporteIndividual(Long idReporte) {
+        log.info("[MatchingJob] Sync individual para reporte {}.", idReporte);
+        try {
+            matchingService.sincronizarReporte(idReporte);
+            List<ReporteDto> todos = reportesClient.getAllReportes();
+            if (todos == null || todos.isEmpty()) return;
+
+            todos.forEach(dto -> {
+                if (dto.getIdReporteMascota() != null) {
+                    matchingService.sincronizarReporte(dto.getIdReporteMascota().longValue());
+                }
+            });
+
+            List<ReporteDto> perdidos    = todos.stream().filter(r -> Integer.valueOf(1).equals(r.getIdTipoReporte())).toList();
+            List<ReporteDto> encontrados = todos.stream().filter(r -> Integer.valueOf(2).equals(r.getIdTipoReporte())).toList();
+
+            for (ReporteDto perdido : perdidos) {
+                for (ReporteDto encontrado : encontrados) {
+                    Long idP = perdido.getIdReporteMascota().longValue();
+                    Long idE = encontrado.getIdReporteMascota().longValue();
+                    if (!idP.equals(idReporte) && !idE.equals(idReporte)) continue;
+                    if (coincidenciaRequestRepository
+                            .existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(idP, idE)) continue;
+                    try {
+                        var solicitud = matchingService.solicitarCoincidencia(idP, idE);
+                        matchingService.procesarCoincidencia(solicitud.idCoincidenciaRequest());
+                    } catch (Exception ex) {
+                        log.warn("[MatchingJob] Par ({}, {}): {}", idP, idE, ex.getMessage());
+                    }
+                }
+            }
+            log.info("[MatchingJob] Sync individual completado para reporte {}.", idReporte);
+        } catch (Exception ex) {
+            log.error("[MatchingJob] Error en sync individual {}: {}", idReporte, ex.getMessage());
+        }
+    }
+
     // Corre 60 s después del arranque, luego cada 10 minutos
     @Scheduled(initialDelay = 60000, fixedDelay = 600000)
     public void ejecutarMatchingAutomatico() {
