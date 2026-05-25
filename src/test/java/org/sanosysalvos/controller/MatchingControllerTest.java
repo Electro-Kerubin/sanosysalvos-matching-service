@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.sanosysalvos.dto.CoincidenciaResultadoResponseDto;
+import org.sanosysalvos.dto.CoincidenciaConReporteDto;
 import org.sanosysalvos.dto.CoincidenciaSolicitudResponseDto;
 import org.sanosysalvos.service.MatchingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,9 +54,11 @@ class MatchingControllerTest {
 
     @Test
     void shouldListResultsByReport() throws Exception {
-        CoincidenciaResultadoResponseDto result = new CoincidenciaResultadoResponseDto(
+        CoincidenciaConReporteDto result = new CoincidenciaConReporteDto(
                 99L,
                 10L,
+                1L,
+                2L,
                 BigDecimal.valueOf(84.5),
                 BigDecimal.valueOf(100),
                 BigDecimal.valueOf(70),
