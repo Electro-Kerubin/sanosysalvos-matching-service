@@ -214,50 +214,54 @@ public class MatchingService {
     }
 
     private ReporteMascota fetchOrSeed(Long idReporte) {
-        return reporteMascotaRepository.findById(idReporte).orElseGet(() -> {
-            log.info("[MatchingService] Reporte id={} no encontrado localmente, sincronizando desde reportes-service.", idReporte);
-            ReporteMascota reporte = new ReporteMascota();
-            reporte.setIdReporteMascota(idReporte);
+        ReporteMascota reporte = reporteMascotaRepository.findById(idReporte).orElseGet(() -> {
+            ReporteMascota r = new ReporteMascota();
+            r.setIdReporteMascota(idReporte);
+            return r;
+        });
 
+        boolean needsUpdate = reporte.getRaza() == null
+                || reporte.getColor() == null
+                || reporte.getTamano() == null
+                || reporte.getFechaReporte() == null;
+
+        if (needsUpdate) {
+            log.info("[MatchingService] Sincronizando datos para reporte id={}.", idReporte);
             try {
                 ReporteDto dto = reportesClient.getReporte(idReporte);
                 if (dto != null) {
-                    reporte.setIdTipoReporte(dto.getIdTipoReporte());
-                    reporte.setFechaReporte(dto.getFechaReporte());
-
-                    if (dto.getIdMascota() != null) {
-                        try {
-                            MascotaDto mascota = reportesClient.getMascota(dto.getIdMascota().longValue());
-                            if (mascota != null) {
-                                reporte.setRaza(mascota.getDescripcionRaza());
-                                String color = mascota.getColorPrimario();
-                                if (color != null && mascota.getColorSecundario() != null && !mascota.getColorSecundario().isBlank()) {
-                                    color = color + " / " + mascota.getColorSecundario();
-                                }
-                                reporte.setColor(color);
-                                reporte.setTamano(mascota.getTamano());
-                            }
-                        } catch (Exception ex) {
-                            log.warn("[MatchingService] No se pudo obtener mascota id={}: {}", dto.getIdMascota(), ex.getMessage());
+                    if (reporte.getIdTipoReporte() == null) reporte.setIdTipoReporte(dto.getIdTipoReporte());
+                    if (reporte.getFechaReporte() == null) reporte.setFechaReporte(dto.resolveFechaEfectiva());
+                    if (reporte.getRaza() == null && dto.getDescripcionRaza() != null) reporte.setRaza(dto.getDescripcionRaza());
+                    if (reporte.getColor() == null && dto.getColorPrimario() != null) {
+                        String color = dto.getColorPrimario();
+                        if (dto.getColorSecundario() != null && !dto.getColorSecundario().isBlank()) {
+                            color = color + " / " + dto.getColorSecundario();
                         }
+                        reporte.setColor(color);
                     }
+                    if (reporte.getTamano() == null && dto.getTamano() != null) reporte.setTamano(dto.getTamano());
                 }
             } catch (Exception ex) {
-                log.warn("[MatchingService] No se pudo obtener reporte id={} desde reportes-service: {}", idReporte, ex.getMessage());
+                log.warn("[MatchingService] No se pudo sincronizar reporte id={}: {}", idReporte, ex.getMessage());
             }
+            reporte = reporteMascotaRepository.save(reporte);
+        }
 
+        if (reporte.getLatitud() == null || reporte.getLongitud() == null) {
             try {
                 CoordenadaResponseDto coord = geolocationClient.getCoordenadaByReporte(idReporte);
                 if (coord != null) {
                     reporte.setLatitud(coord.getUbicacionLat());
                     reporte.setLongitud(coord.getUbicacionLon());
+                    reporte = reporteMascotaRepository.save(reporte);
                 }
             } catch (Exception ex) {
                 log.warn("[MatchingService] No se pudieron obtener coordenadas para reporte id={}: {}", idReporte, ex.getMessage());
             }
+        }
 
-            return reporteMascotaRepository.save(reporte);
-        });
+        return reporte;
     }
 
     private CoincidenciaStatus getStatus(String descripcion) {
