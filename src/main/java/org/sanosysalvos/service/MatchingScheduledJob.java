@@ -46,10 +46,10 @@ public class MatchingScheduledJob {
             });
 
             List<ReporteDto> perdidos    = todos.stream().filter(r -> Integer.valueOf(1).equals(r.getIdTipoReporte())).toList();
-            List<ReporteDto> encontrados = todos.stream().filter(r -> Integer.valueOf(2).equals(r.getIdTipoReporte())).toList();
+            List<ReporteDto> candidatos  = todos.stream().filter(r -> !Integer.valueOf(1).equals(r.getIdTipoReporte())).toList();
 
             for (ReporteDto perdido : perdidos) {
-                for (ReporteDto encontrado : encontrados) {
+                for (ReporteDto encontrado : candidatos) {
                     Long idP = perdido.getIdReporteMascota().longValue();
                     Long idE = encontrado.getIdReporteMascota().longValue();
                     if (!idP.equals(idReporte) && !idE.equals(idReporte)) continue;
@@ -87,18 +87,18 @@ public class MatchingScheduledJob {
                 }
             });
 
-            // idTipoReporte = 1 → PERDIDO, 2 → ENCONTRADO (según convención de la BD)
+            // idTipoReporte = 1 → PERDIDO; cualquier otro tipo (encontrado, avistamiento) es candidato
             List<ReporteDto> perdidos   = todos.stream().filter(r -> Integer.valueOf(1).equals(r.getIdTipoReporte())).toList();
-            List<ReporteDto> encontrados = todos.stream().filter(r -> Integer.valueOf(2).equals(r.getIdTipoReporte())).toList();
+            List<ReporteDto> candidatos = todos.stream().filter(r -> !Integer.valueOf(1).equals(r.getIdTipoReporte())).toList();
 
-            log.info("[MatchingJob] {} reporte(s) perdido(s) × {} reporte(s) encontrado(s) = {} par(es) a evaluar.",
-                    perdidos.size(), encontrados.size(), perdidos.size() * encontrados.size());
+            log.info("[MatchingJob] {} reporte(s) perdido(s) × {} candidato(s) (encontrado/avistamiento) = {} par(es) a evaluar.",
+                    perdidos.size(), candidatos.size(), perdidos.size() * candidatos.size());
 
             int procesados = 0;
             int omitidos = 0;
 
             for (ReporteDto perdido : perdidos) {
-                for (ReporteDto encontrado : encontrados) {
+                for (ReporteDto encontrado : candidatos) {
                     Long idP = perdido.getIdReporteMascota().longValue();
                     Long idE = encontrado.getIdReporteMascota().longValue();
 
