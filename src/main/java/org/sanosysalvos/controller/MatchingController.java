@@ -3,6 +3,7 @@ package org.sanosysalvos.controller;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.sanosysalvos.dto.ActualizarEstadoRequestDto;
+import org.sanosysalvos.dto.CoincidenciaConReporteDto;
 import org.sanosysalvos.dto.CoincidenciaResultadoResponseDto;
 import org.sanosysalvos.dto.CoincidenciaSolicitudResponseDto;
 import org.sanosysalvos.dto.CrearCoincidenciaRequestDto;
@@ -55,7 +56,7 @@ public class MatchingController {
     }
 
     @GetMapping("/reportes/{idReporteMascota}")
-    public ResponseEntity<List<CoincidenciaResultadoResponseDto>> listarCoincidenciasPorReporte(
+    public ResponseEntity<List<CoincidenciaConReporteDto>> listarCoincidenciasPorReporte(
             @PathVariable Long idReporteMascota
     ) {
         return ResponseEntity.ok(matchingService.listarCoincidenciasPorReporte(idReporteMascota));

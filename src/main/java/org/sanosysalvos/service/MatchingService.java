@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.sanosysalvos.client.GeolocationClient;
 import org.sanosysalvos.client.ReportesClient;
+import org.sanosysalvos.dto.CoincidenciaConReporteDto;
 import org.sanosysalvos.dto.CoincidenciaResultadoResponseDto;
 import org.sanosysalvos.dto.CoincidenciaSolicitudResponseDto;
 import org.sanosysalvos.dto.CoordenadaResponseDto;
@@ -158,7 +159,7 @@ public class MatchingService {
     }
 
     @Transactional(readOnly = true)
-    public List<CoincidenciaResultadoResponseDto> listarCoincidenciasPorReporte(Long idReporteMascota) {
+    public List<CoincidenciaConReporteDto> listarCoincidenciasPorReporte(Long idReporteMascota) {
         List<CoincidenciaRequest> requests = coincidenciaRequestRepository
                 .findByReportePerdido_IdReporteMascotaOrReporteEncontrado_IdReporteMascota(idReporteMascota, idReporteMascota);
 
@@ -166,8 +167,12 @@ public class MatchingService {
                 .map(CoincidenciaRequest::getIdCoincidenciaRequest)
                 .map(coincidenciaResultRepository::findByCoincidenciaRequest_IdCoincidenciaRequest)
                 .flatMap(java.util.Optional::stream)
-                .map(this::toResultadoResponse)
+                .map(this::toCoincidenciaConReporteDto)
                 .toList();
+    }
+
+    public void sincronizarReporte(Long idReporte) {
+        fetchOrSeed(idReporte);
     }
 
     @Transactional
@@ -292,6 +297,24 @@ public class MatchingService {
         return new CoincidenciaResultadoResponseDto(
                 result.getIdCoincidenciaResultado(),
                 result.getCoincidenciaRequest().getIdCoincidenciaRequest(),
+                result.getPuntajeTotal(),
+                result.getPuntajeRaza(),
+                result.getPuntajeColor(),
+                result.getPuntajeTamano(),
+                result.getPuntajeDistancia(),
+                result.getPuntajeFecha(),
+                result.getVeredictoFinal(),
+                result.getCreatedAt()
+        );
+    }
+
+    private CoincidenciaConReporteDto toCoincidenciaConReporteDto(CoincidenciaResult result) {
+        CoincidenciaRequest req = result.getCoincidenciaRequest();
+        return new CoincidenciaConReporteDto(
+                result.getIdCoincidenciaResultado(),
+                req.getIdCoincidenciaRequest(),
+                req.getReportePerdido().getIdReporteMascota(),
+                req.getReporteEncontrado().getIdReporteMascota(),
                 result.getPuntajeTotal(),
                 result.getPuntajeRaza(),
                 result.getPuntajeColor(),
