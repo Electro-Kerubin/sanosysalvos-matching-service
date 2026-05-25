@@ -32,6 +32,8 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/coincidencias/reglas/activas").permitAll()
+                .requestMatchers("/api/coincidencias/reportes/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
