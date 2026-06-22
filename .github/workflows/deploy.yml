@@ -2,7 +2,7 @@ name: CI/CD - Build, Push and Deploy
 
 on:
   push:
-    branches: [qa]
+    branches: [qa,main]
 
 jobs:
   build-and-push:
