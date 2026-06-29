@@ -62,45 +62,37 @@ public class MatchingService {
 
     @Transactional
     public List<CoincidenciaResultadoResponseDto> syncCoincidencias(Long idReporte) {
-    // Verificar que el reporte existe
-    ReporteMascota reporte = reporteMascotaRepository.findById(idReporte)
-            .orElseThrow(() -> new NotFoundException("No existe reporte con id " + idReporte));
+        ReporteMascota reporte = reporteMascotaRepository.findById(idReporte)
+                .orElseThrow(() -> new NotFoundException("No existe reporte con id " + idReporte));
 
-    // Determinar tipo contrario: si es perdida(1) buscar encontradas(2), y viceversa
-    Integer tipoContrario = reporte.getIdTipoReporte() == 1 ? 2 : 1;
+        Integer tipoContrario = reporte.getIdTipoReporte() == 1 ? 2 : 1;
+        List<ReporteMascota> reportesContrarios = reporteMascotaRepository.findByIdTipoReporte(tipoContrario);
 
-    // Buscar todos los reportes del tipo contrario
-    List<ReporteMascota> reportesContrarios = reporteMascotaRepository.findByIdTipoReporte(tipoContrario);
+        return reportesContrarios.stream()
+                .map(reporteContrario -> {
+                    Long idPerdido = reporte.getIdTipoReporte() == 1
+                            ? idReporte
+                            : reporteContrario.getIdReporteMascota();
+                    Long idEncontrado = reporte.getIdTipoReporte() == 1
+                            ? reporteContrario.getIdReporteMascota()
+                            : idReporte;
 
-    return reportesContrarios.stream()
-            .map(reporteContrario -> {
-                Long idPerdido = reporte.getIdTipoReporte() == 1 
-                    ? idReporte 
-                    : reporteContrario.getIdReporteMascota();
-                Long idEncontrado = reporte.getIdTipoReporte() == 1 
-                    ? reporteContrario.getIdReporteMascota() 
-                    : idReporte;
+                    boolean yaExiste = coincidenciaRequestRepository
+                            .existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(
+                                    idPerdido, idEncontrado);
+                    if (yaExiste) return null;
 
-                // Verificar si ya existe solicitud para este par
-                boolean yaExiste = coincidenciaRequestRepository
-                        .existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(
-                                idPerdido, idEncontrado);
-                if (yaExiste) return null;
+                    CoincidenciaSolicitudResponseDto solicitud = solicitarCoincidencia(idPerdido, idEncontrado);
 
-                // Crear solicitud
-                CoincidenciaSolicitudResponseDto solicitud = solicitarCoincidencia(idPerdido, idEncontrado);
-
-                // Procesar inmediatamente
-                try {
-                    return procesarCoincidencia(solicitud.idCoincidenciaRequest());
-                } catch (Exception e) {
-                    return null;
-                }
-            })
-            .filter(r -> r != null)
-            .toList();
+                    try {
+                        return procesarCoincidencia(solicitud.idCoincidenciaRequest());
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .filter(r -> r != null)
+                .toList();
     }
-
 
     @Transactional
     public CoincidenciaSolicitudResponseDto solicitarCoincidencia(Long idPerdidoReporte, Long idEncontradoReporte) {
@@ -148,16 +140,8 @@ public class MatchingService {
         BigDecimal puntajeFecha = scoringService.scoreFecha(request.getReportePerdido(), request.getReporteEncontrado());
 
         BigDecimal puntajeTotal = scoringService.calcularPuntajeTotal(
-                puntajeRaza,
-                puntajeColor,
-                puntajeTamano,
-                puntajeDistancia,
-                puntajeFecha,
-                pesoRaza,
-                pesoColor,
-                pesoTamano,
-                pesoDistancia,
-                pesoFecha
+                puntajeRaza, puntajeColor, puntajeTamano, puntajeDistancia, puntajeFecha,
+                pesoRaza, pesoColor, pesoTamano, pesoDistancia, pesoFecha
         );
 
         CoincidenciaResult result = new CoincidenciaResult();
@@ -253,9 +237,7 @@ public class MatchingService {
     }
 
     private String normalizeRuleKey(String key) {
-        if (key == null) {
-            return "";
-        }
+        if (key == null) return "";
         String normalized = Normalizer.normalize(key.trim().toLowerCase(), Normalizer.Form.NFD);
         return normalized.replaceAll("\\p{M}", "");
     }
@@ -271,10 +253,13 @@ public class MatchingService {
         );
     }
 
+    // ── FIX: incluir idPerdidoReporte e idEncontradoReporte en la respuesta ──
     private CoincidenciaResultadoResponseDto toResultadoResponse(CoincidenciaResult result) {
         return new CoincidenciaResultadoResponseDto(
                 result.getIdCoincidenciaResultado(),
                 result.getCoincidenciaRequest().getIdCoincidenciaRequest(),
+                result.getCoincidenciaRequest().getReportePerdido().getIdReporteMascota(),
+                result.getCoincidenciaRequest().getReporteEncontrado().getIdReporteMascota(),
                 result.getPuntajeTotal(),
                 result.getPuntajeRaza(),
                 result.getPuntajeColor(),
@@ -286,5 +271,3 @@ public class MatchingService {
         );
     }
 }
-
-

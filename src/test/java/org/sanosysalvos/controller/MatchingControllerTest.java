@@ -57,6 +57,8 @@ class MatchingControllerTest {
         CoincidenciaResultadoResponseDto result = new CoincidenciaResultadoResponseDto(
                 99L,
                 10L,
+                1L,   // idPerdidoReporte
+                2L,   // idEncontradoReporte
                 BigDecimal.valueOf(84.5),
                 BigDecimal.valueOf(100),
                 BigDecimal.valueOf(70),
@@ -71,7 +73,8 @@ class MatchingControllerTest {
 
         mockMvc.perform(get("/api/coincidencias/reportes/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].idCoincidenciaResultado").value(99));
+                .andExpect(jsonPath("$[0].idCoincidenciaResultado").value(99))
+                .andExpect(jsonPath("$[0].idPerdidoReporte").value(1))
+                .andExpect(jsonPath("$[0].idEncontradoReporte").value(2));
     }
 }
-

@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 public record CoincidenciaResultadoResponseDto(
         Long idCoincidenciaResultado,
         Long idCoincidenciaRequest,
+        Long idPerdidoReporte,
+        Long idEncontradoReporte,
         BigDecimal puntajeTotal,
         BigDecimal puntajeRaza,
         BigDecimal puntajeColor,
@@ -14,6 +16,4 @@ public record CoincidenciaResultadoResponseDto(
         BigDecimal puntajeFecha,
         String veredictoFinal,
         LocalDateTime createdAt
-) {
-}
-
+) {}
