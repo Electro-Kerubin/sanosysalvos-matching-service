@@ -61,6 +61,48 @@ public class MatchingService {
     }
 
     @Transactional
+    public List<CoincidenciaResultadoResponseDto> syncCoincidencias(Long idReporte) {
+    // Verificar que el reporte existe
+    ReporteMascota reporte = reporteMascotaRepository.findById(idReporte)
+            .orElseThrow(() -> new NotFoundException("No existe reporte con id " + idReporte));
+
+    // Determinar tipo contrario: si es perdida(1) buscar encontradas(2), y viceversa
+    Integer tipoContrario = reporte.getIdTipoReporte() == 1 ? 2 : 1;
+
+    // Buscar todos los reportes del tipo contrario
+    List<ReporteMascota> reportesContrarios = reporteMascotaRepository.findByIdTipoReporte(tipoContrario);
+
+    return reportesContrarios.stream()
+            .map(reporteContrario -> {
+                Long idPerdido = reporte.getIdTipoReporte() == 1 
+                    ? idReporte 
+                    : reporteContrario.getIdReporteMascota();
+                Long idEncontrado = reporte.getIdTipoReporte() == 1 
+                    ? reporteContrario.getIdReporteMascota() 
+                    : idReporte;
+
+                // Verificar si ya existe solicitud para este par
+                boolean yaExiste = coincidenciaRequestRepository
+                        .existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(
+                                idPerdido, idEncontrado);
+                if (yaExiste) return null;
+
+                // Crear solicitud
+                CoincidenciaSolicitudResponseDto solicitud = solicitarCoincidencia(idPerdido, idEncontrado);
+
+                // Procesar inmediatamente
+                try {
+                    return procesarCoincidencia(solicitud.idCoincidenciaRequest());
+                } catch (Exception e) {
+                    return null;
+                }
+            })
+            .filter(r -> r != null)
+            .toList();
+    }
+
+
+    @Transactional
     public CoincidenciaSolicitudResponseDto solicitarCoincidencia(Long idPerdidoReporte, Long idEncontradoReporte) {
         ReporteMascota reportePerdido = reporteMascotaRepository.findById(idPerdidoReporte)
                 .orElseThrow(() -> new NotFoundException("No existe reporte perdido con id " + idPerdidoReporte));

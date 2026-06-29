@@ -11,5 +11,7 @@ public interface ReporteMascotaRepository extends JpaRepository<ReporteMascota, 
      * Permite encontrar reportes del tipo opuesto (perdido vs encontrado).
      */
     List<ReporteMascota> findByIdTipoReporteNot(Integer idTipoReporte);
+
+    List<ReporteMascota> findByIdTipoReporte(Integer idTipoReporte);
 }
 

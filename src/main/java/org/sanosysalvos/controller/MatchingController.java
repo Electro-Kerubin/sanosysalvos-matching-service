@@ -29,6 +29,13 @@ public class MatchingController {
         this.matchingService = matchingService;
     }
 
+    @PostMapping("/sync/{idReporte}")
+    public ResponseEntity<List<CoincidenciaResultadoResponseDto>> syncCoincidencias(
+            @PathVariable Long idReporte
+    ) {
+        return ResponseEntity.ok(matchingService.syncCoincidencias(idReporte));
+    }
+
     @PostMapping("/solicitudes")
     public ResponseEntity<CoincidenciaSolicitudResponseDto> solicitarCoincidencia(
             @Valid @RequestBody CrearCoincidenciaRequestDto request

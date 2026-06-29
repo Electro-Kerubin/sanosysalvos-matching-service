@@ -12,5 +12,8 @@ public interface CoincidenciaRequestRepository extends JpaRepository<Coincidenci
             Long idPerdidoReporte,
             Long idEncontradoReporte
     );
+
+    boolean existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(
+    Long idPerdido, Long idEncontrado);
 }
 
