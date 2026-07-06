@@ -7,7 +7,7 @@ public record CoincidenciaResultadoResponseDto(
         Long idCoincidenciaResultado,
         Long idCoincidenciaRequest,
         Long idPerdidoReporte,
-        Long idEncontradoReporte,
+        Long idAvistamientoReporte,
         BigDecimal puntajeTotal,
         BigDecimal puntajeRaza,
         BigDecimal puntajeColor,
