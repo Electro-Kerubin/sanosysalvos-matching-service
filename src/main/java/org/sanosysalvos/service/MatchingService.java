@@ -31,6 +31,11 @@ public class MatchingService {
     private static final String ESTADO_PENDIENTE = "PENDIENTE";
     private static final String ESTADO_PROCESADO = "PROCESADO";
 
+    // Tipos de reporte
+    private static final int TIPO_PERDIDA = 1;
+    private static final int TIPO_ENCONTRADA = 2;
+    private static final int TIPO_AVISTAMIENTO = 3;
+
     private final CoincidenciaRequestRepository coincidenciaRequestRepository;
     private final CoincidenciaResultRepository coincidenciaResultRepository;
     private final CoincidenciaStatusRepository coincidenciaStatusRepository;
@@ -60,28 +65,44 @@ public class MatchingService {
         this.coincidenciaNotifier = coincidenciaNotifier;
     }
 
+    /**
+     * Sincroniza coincidencias para un reporte dado.
+     * Lógica: Mascota Perdida (tipo 1) vs Avistamientos (tipo 3).
+     * Los reportes de tipo 2 (encontrada) no participan en el motor.
+     */
     @Transactional
     public List<CoincidenciaResultadoResponseDto> syncCoincidencias(Long idReporte) {
         ReporteMascota reporte = reporteMascotaRepository.findById(idReporte)
                 .orElseThrow(() -> new NotFoundException("No existe reporte con id " + idReporte));
 
-        Integer tipoContrario = reporte.getIdTipoReporte() == 1 ? 2 : 1;
+        Integer tipoActual = reporte.getIdTipoReporte();
+
+        // Solo perdidas y avistamientos participan en el motor
+        if (tipoActual != TIPO_PERDIDA && tipoActual != TIPO_AVISTAMIENTO) {
+            return List.of();
+        }
+
+        // Perdida busca avistamientos y viceversa
+        Integer tipoContrario = tipoActual == TIPO_PERDIDA ? TIPO_AVISTAMIENTO : TIPO_PERDIDA;
         List<ReporteMascota> reportesContrarios = reporteMascotaRepository.findByIdTipoReporte(tipoContrario);
 
         return reportesContrarios.stream()
                 .map(reporteContrario -> {
-                    Long idPerdido = reporte.getIdTipoReporte() == 1
+                    // El reporte perdido siempre va como idPerdido
+                    Long idPerdido = tipoActual == TIPO_PERDIDA
                             ? idReporte
                             : reporteContrario.getIdReporteMascota();
-                    Long idEncontrado = reporte.getIdTipoReporte() == 1
+                    Long idEncontrado = tipoActual == TIPO_PERDIDA
                             ? reporteContrario.getIdReporteMascota()
                             : idReporte;
 
+                    // Verificar si ya existe solicitud para este par
                     boolean yaExiste = coincidenciaRequestRepository
                             .existsByReportePerdido_IdReporteMascotaAndReporteEncontrado_IdReporteMascota(
                                     idPerdido, idEncontrado);
                     if (yaExiste) return null;
 
+                    // Crear y procesar solicitud
                     CoincidenciaSolicitudResponseDto solicitud = solicitarCoincidencia(idPerdido, idEncontrado);
 
                     try {
@@ -253,7 +274,6 @@ public class MatchingService {
         );
     }
 
-    // ── FIX: incluir idPerdidoReporte e idEncontradoReporte en la respuesta ──
     private CoincidenciaResultadoResponseDto toResultadoResponse(CoincidenciaResult result) {
         return new CoincidenciaResultadoResponseDto(
                 result.getIdCoincidenciaResultado(),
