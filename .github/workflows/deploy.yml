@@ -2,12 +2,36 @@ name: CI/CD - Build, Push and Deploy
 
 on:
   push:
-    branches: [qa,main]
+    branches: [dev, main]
 
 jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Run unit tests
+        run: mvn test --no-transfer-progress
+
+      - name: Publish test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-matching
+          path: target/surefire-reports/*.xml
+
   build-and-push:
     name: Build and Push to DockerHub
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
-      - name: Preparar archivos en EC2 via SSH
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -51,13 +75,10 @@ jobs:
           proxy_host: ${{ secrets.EC2_FRONT_HOST }}
           proxy_username: ${{ secrets.EC2_USER }}
           proxy_key: ${{ secrets.EC2_PEM_KEY }}
-          debug: true
-          command_timeout: 20m
           envs: DOCKERHUB_USERNAME,DB_USER,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD,JWT_SECRET
           script: |
             export PATH=$PATH:/usr/bin:/usr/local/bin
 
-            # --- Docker ---
             if ! sudo /usr/bin/docker info &> /dev/null; then
               sudo dnf update -y -q
               sudo dnf install -y -q docker
@@ -71,155 +92,25 @@ jobs:
               sudo systemctl restart docker
             fi
 
-            # --- Directorio ---
-            sudo mkdir -p /opt/sanosysalvos/infra
-            sudo chown ec2-user:ec2-user /opt/sanosysalvos/infra
-            cd /opt/sanosysalvos/infra
+            sudo docker stop sanosysalvos-matching-service 2>/dev/null || true
+            sudo docker rm sanosysalvos-matching-service 2>/dev/null || true
+            sudo docker pull ${DOCKERHUB_USERNAME}/sanosysalvos-matching-service:latest
 
-            # --- .env (se sobreescribe en cada deploy para mantener valores actualizados) ---
-            cat > .env <<EOF
-            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
-            DB_USER=${DB_USER}
-            DB_PASSWORD=${DB_PASSWORD}
-            RABBITMQ_USER=${RABBITMQ_USER}
-            RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
-            JWT_SECRET=${JWT_SECRET}
-            EOF
+            sudo docker run -d \
+              --name sanosysalvos-matching-service \
+              --network sanosysalvos-network \
+              --restart unless-stopped \
+              -p 8085:8085 \
+              -e MATCHING_DB_URL=jdbc:postgresql://postgres:5432/sanosysalvos \
+              -e MATCHING_DB_USER=${DB_USER} \
+              -e MATCHING_DB_PASSWORD=${DB_PASSWORD} \
+              -e RABBITMQ_HOST=rabbitmq \
+              -e RABBITMQ_PORT=5672 \
+              -e RABBITMQ_USERNAME=${RABBITMQ_USER} \
+              -e RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD} \
+              -e GEOLOCATION_SERVICE_URL=http://geolocation-service:8084 \
+              -e EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/ \
+              -e JWT_SECRET=${JWT_SECRET} \
+              ${DOCKERHUB_USERNAME}/sanosysalvos-matching-service:latest
 
-            # --- docker-compose.yml ---
-            cat > docker-compose.yml <<'COMPOSE_EOF'
-            version: '3.8'
-            services:
-              postgres:
-                image: postgres:16-alpine
-                container_name: sanosysalvos-postgres
-                restart: unless-stopped
-                environment:
-                  POSTGRES_DB: sanosysalvos
-                  POSTGRES_USER: ${DB_USER}
-                  POSTGRES_PASSWORD: ${DB_PASSWORD}
-                ports:
-                  - "5432:5432"
-                volumes:
-                  - postgres_data:/var/lib/postgresql/data
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d sanosysalvos"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-              rabbitmq:
-                image: rabbitmq:3.13-management-alpine
-                container_name: sanosysalvos-rabbitmq
-                restart: unless-stopped
-                ports:
-                  - "5672:5672"
-                  - "15672:15672"
-                environment:
-                  RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-                  RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-                volumes:
-                  - rabbitmq_data:/var/lib/rabbitmq
-                healthcheck:
-                  test: ["CMD", "rabbitmq-diagnostics", "ping"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-              auth-service:
-                image: ${DOCKERHUB_USERNAME}/sanosysalvos-auth-service:latest
-                container_name: sanosysalvos-auth-service
-                restart: unless-stopped
-                ports:
-                  - "8081:8081"
-                environment:
-                  DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
-                  DB_USER: ${DB_USER}
-                  DB_PASSWORD: ${DB_PASSWORD}
-                  JWT_SECRET: ${JWT_SECRET}
-                depends_on:
-                  postgres:
-                    condition: service_healthy
-              report-service:
-                image: ${DOCKERHUB_USERNAME}/sanosysalvos-reporte-service:latest
-                container_name: sanosysalvos-report-service
-                restart: unless-stopped
-                ports:
-                  - "8083:8083"
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sanosysalvos
-                  SPRING_DATASOURCE_USERNAME: ${DB_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-                  SPRING_JPA_HIBERNATE_DDL_AUTO: update
-                  RABBITMQ_HOST: rabbitmq
-                  RABBITMQ_PORT: 5672
-                  RABBITMQ_USERNAME: ${RABBITMQ_USER}
-                  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-                depends_on:
-                  postgres:
-                    condition: service_healthy
-                  rabbitmq:
-                    condition: service_healthy
-              geolocation-service:
-                image: ${DOCKERHUB_USERNAME}/sanosysalvos-geolocation-service:latest
-                container_name: sanosysalvos-geolocation-service
-                restart: unless-stopped
-                ports:
-                  - "8084:8084"
-                environment:
-                  GEO_DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
-                  GEO_DB_USER: ${DB_USER}
-                  GEO_DB_PASSWORD: ${DB_PASSWORD}
-                depends_on:
-                  postgres:
-                    condition: service_healthy
-              matching-service:
-                image: ${DOCKERHUB_USERNAME}/sanosysalvos-matching-service:latest
-                container_name: sanosysalvos-matching-service
-                restart: unless-stopped
-                ports:
-                  - "8085:8085"
-                environment:
-                  MATCHING_DB_URL: jdbc:postgresql://postgres:5432/sanosysalvos
-                  MATCHING_DB_USER: ${DB_USER}
-                  MATCHING_DB_PASSWORD: ${DB_PASSWORD}
-                  RABBITMQ_HOST: rabbitmq
-                  RABBITMQ_PORT: 5672
-                  RABBITMQ_USERNAME: ${RABBITMQ_USER}
-                  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-                  GEOLOCATION_SERVICE_URL: http://geolocation-service:8084
-                  JWT_SECRET: ${JWT_SECRET}
-                depends_on:
-                  postgres:
-                    condition: service_healthy
-                  rabbitmq:
-                    condition: service_healthy
-                  geolocation-service:
-                    condition: service_started
-              api-gateway:
-                image: ${DOCKERHUB_USERNAME}/sanosysalvos-api-gateway:latest
-                container_name: sanosysalvos-api-gateway
-                restart: unless-stopped
-                ports:
-                  - "8080:8080"
-                environment:
-                  JWT_SECRET: ${JWT_SECRET}
-                  AUTH_SERVICE_URL: http://auth-service:8081
-                  REPORTE_SERVICE_URL: http://report-service:8083
-                  GEO_SERVICE_URL: http://geolocation-service:8084
-                  MATCH_SERVICE_URL: http://matching-service:8085
-                depends_on:
-                  - auth-service
-                  - report-service
-                  - geolocation-service
-                  - matching-service
-            volumes:
-              postgres_data:
-              rabbitmq_data:
-            networks:
-              default:
-                name: sanosysalvos-network
-            COMPOSE_EOF
-
-            # --- Deploy ---
-            sudo docker compose pull matching-service
-            sudo docker compose up -d --no-deps --no-wait matching-service
             sudo docker image prune -f

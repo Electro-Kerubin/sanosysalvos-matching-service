@@ -1,88 +1,128 @@
 package org.sanosysalvos.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.sanosysalvos.model.ReporteMascota;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 class ScoringServiceTest {
 
     private ScoringService scoringService;
+    private ReporteMascota reportePerdido;
+    private ReporteMascota reporteAvistamiento;
 
     @BeforeEach
     void setUp() {
         scoringService = new ScoringService();
+
+        reportePerdido = new ReporteMascota();
+        reportePerdido.setRaza("Labrador");
+        reportePerdido.setColor("negro");
+        reportePerdido.setTamano("mediano");
+        reportePerdido.setLatitud(-33.045);
+        reportePerdido.setLongitud(-71.610);
+        reportePerdido.setFechaReporte(LocalDateTime.now().minusDays(1));
+
+        reporteAvistamiento = new ReporteMascota();
+        reporteAvistamiento.setRaza("Labrador");
+        reporteAvistamiento.setColor("negro");
+        reporteAvistamiento.setTamano("mediano");
+        reporteAvistamiento.setLatitud(-33.046);
+        reporteAvistamiento.setLongitud(-71.611);
+        reporteAvistamiento.setFechaReporte(LocalDateTime.now());
     }
 
     @Test
-    void shouldReturnHighScoreWhenReportsAreVerySimilar() {
-        ReporteMascota perdido = baseReporte();
-        ReporteMascota encontrado = baseReporte();
-
-        BigDecimal puntajeRaza = scoringService.scoreRaza(perdido, encontrado);
-        BigDecimal puntajeColor = scoringService.scoreColor(perdido, encontrado);
-        BigDecimal puntajeTamano = scoringService.scoreTamano(perdido, encontrado);
-        BigDecimal puntajeDistancia = scoringService.scoreDistancia(perdido, encontrado);
-        BigDecimal puntajeFecha = scoringService.scoreFecha(perdido, encontrado);
-
-        BigDecimal total = scoringService.calcularPuntajeTotal(
-                puntajeRaza,
-                puntajeColor,
-                puntajeTamano,
-                puntajeDistancia,
-                puntajeFecha,
-                BigDecimal.valueOf(0.25),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.15)
-        );
-
-        assertEquals(BigDecimal.valueOf(100.00).setScale(2), total);
-        assertEquals("COINCIDENCIA_ALTA", scoringService.veredicto(total));
+    void scoreRaza_debeRetornar100_cuandoRazasIguales() {
+        BigDecimal score = scoringService.scoreRaza(reportePerdido, reporteAvistamiento);
+        assertEquals(new BigDecimal("100"), score);
     }
 
     @Test
-    void shouldReturnLowVerdictWhenNoRelevantFieldsMatch() {
-        ReporteMascota perdido = baseReporte();
-
-        ReporteMascota encontrado = new ReporteMascota();
-        encontrado.setRaza("poodle");
-        encontrado.setColor("blanco");
-        encontrado.setTamano("grande");
-        encontrado.setLatitud(-33.6000);
-        encontrado.setLongitud(-70.8000);
-        encontrado.setFechaReporte(LocalDateTime.now().minusDays(20));
-
-        BigDecimal total = scoringService.calcularPuntajeTotal(
-                scoringService.scoreRaza(perdido, encontrado),
-                scoringService.scoreColor(perdido, encontrado),
-                scoringService.scoreTamano(perdido, encontrado),
-                scoringService.scoreDistancia(perdido, encontrado),
-                scoringService.scoreFecha(perdido, encontrado),
-                BigDecimal.valueOf(0.25),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.20),
-                BigDecimal.valueOf(0.15)
-        );
-
-        assertEquals(BigDecimal.valueOf(0.00).setScale(2), total);
-        assertEquals("COINCIDENCIA_BAJA", scoringService.veredicto(total));
+    void scoreRaza_debeRetornar0_cuandoRazasDiferentes() {
+        reporteAvistamiento.setRaza("Pastor Alemán");
+        BigDecimal score = scoringService.scoreRaza(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
     }
 
-    private ReporteMascota baseReporte() {
-        ReporteMascota reporte = new ReporteMascota();
-        reporte.setRaza("labrador");
-        reporte.setColor("negro");
-        reporte.setTamano("mediano");
-        reporte.setLatitud(-33.4489);
-        reporte.setLongitud(-70.6693);
-        reporte.setFechaReporte(LocalDateTime.now());
-        return reporte;
+    @Test
+    void scoreRaza_debeRetornar0_cuandoRazaEsNula() {
+        reporteAvistamiento.setRaza(null);
+        BigDecimal score = scoringService.scoreRaza(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
+    }
+
+    @Test
+    void scoreColor_debeRetornar100_cuandoColoresIguales() {
+        BigDecimal score = scoringService.scoreColor(reportePerdido, reporteAvistamiento);
+        assertEquals(new BigDecimal("100"), score);
+    }
+
+    @Test
+    void scoreColor_debeRetornar0_cuandoColoresDiferentes() {
+        reporteAvistamiento.setColor("blanco");
+        BigDecimal score = scoringService.scoreColor(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
+    }
+
+    @Test
+    void scoreTamano_debeRetornar100_cuandoTamanosIguales() {
+        BigDecimal score = scoringService.scoreTamano(reportePerdido, reporteAvistamiento);
+        assertEquals(new BigDecimal("100"), score);
+    }
+
+    @Test
+    void scoreTamano_debeRetornar0_cuandoTamanosDiferentes() {
+        reporteAvistamiento.setTamano("grande");
+        BigDecimal score = scoringService.scoreTamano(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
+    }
+
+    @Test
+    void scoreDistancia_debeRetornar100_cuandoDistanciaEsMenorA2km() {
+        BigDecimal score = scoringService.scoreDistancia(reportePerdido, reporteAvistamiento);
+        assertEquals(new BigDecimal("100"), score);
+    }
+
+    @Test
+    void scoreDistancia_debeRetornar0_cuandoCoordenadaEsNula() {
+        reporteAvistamiento.setLatitud(null);
+        BigDecimal score = scoringService.scoreDistancia(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
+    }
+
+    @Test
+    void scoreFecha_debeRetornar100_cuandoFechaDiferenciaEsMenorA1Dia() {
+        BigDecimal score = scoringService.scoreFecha(reportePerdido, reporteAvistamiento);
+        assertEquals(new BigDecimal("100"), score);
+    }
+
+    @Test
+    void scoreFecha_debeRetornar0_cuandoFechaEsNula() {
+        reporteAvistamiento.setFechaReporte(null);
+        BigDecimal score = scoringService.scoreFecha(reportePerdido, reporteAvistamiento);
+        assertEquals(BigDecimal.ZERO, score);
+    }
+
+    @Test
+    void veredicto_debeRetornarCoincidenciaAlta_cuandoPuntajeMayorA75() {
+        String veredicto = scoringService.veredicto(new BigDecimal("80"));
+        assertEquals("COINCIDENCIA_ALTA", veredicto);
+    }
+
+    @Test
+    void veredicto_debeRetornarCoincidenciaMedia_cuandoPuntajeEntre50Y75() {
+        String veredicto = scoringService.veredicto(new BigDecimal("60"));
+        assertEquals("COINCIDENCIA_MEDIA", veredicto);
+    }
+
+    @Test
+    void veredicto_debeRetornarCoincidenciaBaja_cuandoPuntajeMenorA50() {
+        String veredicto = scoringService.veredicto(new BigDecimal("30"));
+        assertEquals("COINCIDENCIA_BAJA", veredicto);
     }
 }
-
