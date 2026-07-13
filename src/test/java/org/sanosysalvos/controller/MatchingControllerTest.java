@@ -17,10 +17,17 @@ import org.sanosysalvos.service.MatchingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(MatchingController.class)
+@ContextConfiguration(classes = {MatchingController.class, MatchingControllerTest.TestSecurityConfig.class})
 class MatchingControllerTest {
 
     @Autowired
@@ -29,25 +36,28 @@ class MatchingControllerTest {
     @MockBean
     private MatchingService matchingService;
 
+    // ── Deshabilitar seguridad solo en tests ──────────────────────
+    @Configuration
+    static class TestSecurityConfig {
+        @Bean
+        public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+            http.csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+            return http.build();
+        }
+    }
+
     @Test
     void shouldCreateSolicitud() throws Exception {
         CoincidenciaSolicitudResponseDto response = new CoincidenciaSolicitudResponseDto(
-                10L,
-                1L,
-                2L,
-                "PENDIENTE",
-                LocalDateTime.now(),
-                null
+                10L, 1L, 2L, "PENDIENTE", LocalDateTime.now(), null
         );
 
         when(matchingService.solicitarCoincidencia(eq(1L), eq(2L))).thenReturn(response);
 
         mockMvc.perform(post("/api/coincidencias/solicitudes")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{" +
-                                "\"idPerdidoReporte\":1," +
-                                "\"idEncontradoReporte\":2" +
-                                "}"))
+                        .content("{\"idPerdidoReporte\":1,\"idEncontradoReporte\":2}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.idCoincidenciaRequest").value(10));
     }
@@ -55,10 +65,7 @@ class MatchingControllerTest {
     @Test
     void shouldListResultsByReport() throws Exception {
         CoincidenciaResultadoResponseDto result = new CoincidenciaResultadoResponseDto(
-                99L,
-                10L,
-                1L,   // idPerdidoReporte
-                2L,   // idEncontradoReporte
+                99L, 10L, 1L, 2L,
                 BigDecimal.valueOf(84.5),
                 BigDecimal.valueOf(100),
                 BigDecimal.valueOf(70),
@@ -75,6 +82,6 @@ class MatchingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].idCoincidenciaResultado").value(99))
                 .andExpect(jsonPath("$[0].idPerdidoReporte").value(1))
-                .andExpect(jsonPath("$[0].idEncontradoReporte").value(2));
+                .andExpect(jsonPath("$[0].idAvistamientoReporte").value(2));
     }
 }
